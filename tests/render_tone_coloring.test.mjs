@@ -81,6 +81,7 @@ async function renderPersistentCard(page, expression, reading) {
     }, {expression, reading, source: toneSource});
 
     return page.evaluate(() => ({
+        vocabText: document.querySelector(".vocab")?.textContent,
         vocabClasses: Array.from(document.querySelectorAll(".vocab [class^='tone-']"))
             .map(element => element.className),
         vocabColors: Array.from(document.querySelectorAll(".vocab [class^='tone-']"))
@@ -161,6 +162,11 @@ test("recolors cards after forward and backward navigation in a persistent previ
         assert.deepEqual(next.vocabClasses, ["tone-2", "tone-2"]);
         assert.deepEqual(next.vocabColors, ["rgb(74, 222, 128)", "rgb(74, 222, 128)"]);
         assert.deepEqual(next.sentenceClasses, ["tone-2", "tone-2"]);
+
+        const supplementary = await renderPersistentCard(page, "𠮷野家", "jí yě jiā");
+        assert.equal(supplementary.vocabText, "𠮷野家");
+        assert.deepEqual(supplementary.vocabClasses, ["tone-2", "tone-3", "tone-1"]);
+        assert.deepEqual(supplementary.sentenceClasses, ["tone-2", "tone-3", "tone-1"]);
 
         const previous = await renderPersistentCard(page, "华发", "huáfà");
         assert.deepEqual(previous.vocabClasses, ["tone-2", "tone-4"]);

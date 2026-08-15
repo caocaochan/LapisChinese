@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -135,7 +136,21 @@ class PackageTest(unittest.TestCase):
                 self.assertNotIn(banned, template_text)
         self.assertIn('lang="zh-Hans"', template_text)
         self.assertIn('lang="zh-Hant"', template_text)
-        self.assertIn('<script src="_lapis_opencc.js"></script>', template_text)
+        self.assertNotIn('<script src="_lapis_opencc.js"></script>', template_text)
+        self.assertIn('script.src = "_lapis_opencc.js"', template_text)
+
+    def test_inline_scripts_do_not_interpolate_fields(self) -> None:
+        for template_name in ["front.html", "back.html"]:
+            template = (ROOT / "src" / template_name).read_text(encoding="utf-8")
+            inline_scripts = re.findall(
+                r"<script(?:\s[^>]*)?>(.*?)</script>",
+                template,
+                flags=re.DOTALL,
+            )
+            self.assertGreater(len(inline_scripts), 0, template_name)
+            for script in inline_scripts:
+                with self.subTest(template=template_name):
+                    self.assertNotIn("{{", script)
 
     def test_sample_note_and_card(self) -> None:
         guid, model_id, fields, tags = self.connection.execute(

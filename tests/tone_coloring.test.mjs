@@ -54,6 +54,7 @@ test("handles explicit and implicit neutral tones", () => {
 test("maps only Han characters and ignores punctuation or Latin content", () => {
     assert.deepEqual(plain(toneSequenceForExpression("你好！", "nǐ hǎo")), [3, 3]);
     assert.deepEqual(plain(toneSequenceForExpression("第1个", "di4 ge4")), [4, 4]);
+    assert.deepEqual(plain(toneSequenceForExpression("𠮷野家", "jí yě jiā")), [2, 3, 1]);
 });
 
 test("fails closed for ambiguous or unsafe input", () => {

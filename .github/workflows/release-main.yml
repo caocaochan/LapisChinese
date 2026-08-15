@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-main-${{ github.sha }}
-  cancel-in-progress: false
+  group: release-main
+  queue: max
 
 jobs:
   release:
@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -47,7 +49,7 @@ jobs:
         run: python scripts/build_apkg.py dist/LapisChinese.apkg
 
       - name: Test APKG
-        run: python -m unittest tests.test_package
+        run: python -m unittest discover -s tests -p "test_*.py"
 
       - name: Publish patch release
         env:
@@ -56,35 +58,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
           asset="dist/LapisChinese.apkg"
           tag=""
 
           for attempt in {1..20}; do
             git fetch --force --tags origin
-
-            tag="$({
-              git tag --points-at "${GITHUB_SHA}" |
-                grep -E "${semver_pattern}" |
-                sort -V |
-                tail -n 1
-            } || true)"
-            if [[ -n "${tag}" ]]; then
+            decision="$(python scripts/release_policy.py "${GITHUB_SHA}")"
+            read -r tag_status tag <<< "${decision}"
+            if [[ "${tag_status}" == "existing" ]]; then
               break
             fi
-
-            latest_tag="$({
-              git tag --list |
-                grep -E "${semver_pattern}" |
-                sort -V |
-                tail -n 1
-            } || true)"
-            if [[ -z "${latest_tag}" ]]; then
-              latest_tag="v1.0.0"
-            fi
-
-            IFS=. read -r major minor patch <<< "${latest_tag#v}"
-            tag="v${major}.${minor}.$((patch + 1))"
             git tag "${tag}" "${GITHUB_SHA}"
 
             if git push origin "refs/tags/${tag}:refs/tags/${tag}"; then
@@ -102,14 +85,27 @@ jobs:
           fi
 
           title="Lapis Chinese ${tag}"
+          git fetch --force origin main:refs/remotes/origin/main
+          is_head=false
+          if [[ "$(git rev-parse refs/remotes/origin/main)" == "${GITHUB_SHA}" ]]; then
+            is_head=true
+          fi
 
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" "${asset}#LapisChinese.apkg" --clobber
-            gh release edit "${tag}" --title "${title}" --latest
+            edit_args=(--title "${title}")
+            if [[ "${is_head}" == "true" ]]; then
+              edit_args+=(--latest)
+            fi
+            gh release edit "${tag}" "${edit_args[@]}"
           else
+            latest_arg="--latest=false"
+            if [[ "${is_head}" == "true" ]]; then
+              latest_arg="--latest"
+            fi
             gh release create "${tag}" "${asset}#LapisChinese.apkg" \
               --title "${title}" \
               --generate-notes \
-              --latest \
+              "${latest_arg}" \
               --verify-tag
           fi

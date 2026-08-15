@@ -69,13 +69,14 @@ pinned Playwright development dependency.
 ```powershell
 npm install
 npm run test:all-js
-python -m unittest tests.test_package
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
 The suite covers diacritic and numbered Pinyin, compact numeric readings, neutral
 tones, umlaut spellings, mismatch and ambiguity handling, Simplified/Traditional
-conversion and rendering, graceful converter failure, template cleanup, stable
-Anki model metadata, and packaged OpenCC media.
+conversion and persistent rendering, graceful converter failure, safe template
+data handling, Click-card listener cleanup, release ordering, stable Anki model
+metadata, and packaged OpenCC media.
 
 ## Customization
 

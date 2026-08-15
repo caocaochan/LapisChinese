@@ -10,6 +10,19 @@ const backTemplate = readFileSync(new URL("../src/back.html", import.meta.url), 
 const openCCPath = fileURLToPath(
     new URL("../vendor/opencc-js-1.4.1/_lapis_opencc.js", import.meta.url),
 );
+const openCCSource = readFileSync(openCCPath, "utf8");
+const instrumentedOpenCCSource = `
+globalThis.__openCCBundleEvaluations = (globalThis.__openCCBundleEvaluations || 0) + 1;
+${openCCSource}
+{
+    const originalConverter = globalThis.OpenCC.Converter;
+    globalThis.OpenCC.Converter = function (...args) {
+        globalThis.__openCCConverterConstructions =
+            (globalThis.__openCCConverterConstructions || 0) + 1;
+        return Reflect.apply(originalConverter, this, args);
+    };
+}
+`;
 
 function markedSource(startMarker, endMarker) {
     const start = backTemplate.indexOf(startMarker);
@@ -21,6 +34,38 @@ function markedSource(startMarker, endMarker) {
 
 const variantSource = markedSource("// <script-variants>", "// </script-variants>");
 const toneSource = markedSource("// <tone-coloring>", "// </tone-coloring>");
+
+
+async function setPersistentPageContent(page) {
+    await page.setContent(`
+        <base href="https://lapis.test/">
+        <style>${css}</style>
+        <div class="card"><div id="qa"></div></div>
+    `);
+}
+
+
+async function renderPersistentVariantCard(page, expression) {
+    await page.evaluate(({expression, source}) => {
+        const qa = document.getElementById("qa");
+        const lapis = document.createElement("div");
+        lapis.id = "lapis";
+        lapis.lang = "zh-Hans";
+
+        const vocab = document.createElement("div");
+        vocab.className = "vocab";
+        vocab.textContent = expression;
+
+        const variants = document.createElement("div");
+        variants.className = "script-variants";
+        variants.hidden = true;
+
+        lapis.append(vocab, variants);
+        qa.replaceChildren(lapis);
+        (globalThis.__variantRoots ||= []).push(lapis);
+        eval(`${source}\nrenderExpressionVariantsWhenReady(lapis);`);
+    }, {expression, source: variantSource});
+}
 
 
 async function renderCard(page, {
@@ -53,10 +98,13 @@ async function renderCard(page, {
 
     const applied = await page.evaluate(
         source => eval(`${source.variants}\n${source.tones}\n({
-            variantApplied: renderExpressionVariants(),
+            variantApplied: renderExpressionVariants(
+                document.getElementById("lapis"),
+                source.loadOpenCC ? globalThis.OpenCC : {},
+            ),
             toneApplied: applyToneColors(),
         });`),
-        {variants: variantSource, tones: toneSource},
+        {variants: variantSource, tones: toneSource, loadOpenCC},
     );
     return page.evaluate(appliedResult => {
         const container = document.querySelector(".script-variants");
@@ -167,6 +215,100 @@ test("renders labeled variants, language-aware fonts, and graceful fallback", as
         assert.equal(unavailable.containerHidden, true);
         assert.deepEqual(unavailable.variants, []);
         assert.equal(unavailable.primaryToneSpans, 2);
+    } finally {
+        await browser.close();
+    }
+});
+
+
+test("loads OpenCC and constructs converters once across persistent card renders", async () => {
+    const browser = await launchBrowser();
+    try {
+        const page = await browser.newPage();
+        let scriptRequests = 0;
+        await page.route("https://lapis.test/_lapis_opencc.js", async route => {
+            scriptRequests += 1;
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await route.fulfill({
+                body: instrumentedOpenCCSource,
+                contentType: "text/javascript; charset=utf-8",
+            });
+        });
+        await setPersistentPageContent(page);
+
+        await renderPersistentVariantCard(page, "中国");
+        await renderPersistentVariantCard(page, "软件");
+        await page.waitForFunction(() => (
+            document.querySelector(".script-variant-text")?.textContent === "軟件"
+        ));
+
+        await renderPersistentVariantCard(page, "中國");
+        await page.waitForFunction(() => (
+            document.querySelector(".script-variant-text")?.textContent === "中国"
+        ));
+
+        const result = await page.evaluate(() => ({
+            bundleEvaluations: globalThis.__openCCBundleEvaluations,
+            converterConstructions: globalThis.__openCCConverterConstructions,
+            detachedFirstRootWasUntouched:
+                globalThis.__variantRoots[0].querySelectorAll(".script-variant").length === 0,
+            currentVariant: document.querySelector(".script-variant-text")?.textContent,
+        }));
+        assert.equal(scriptRequests, 1);
+        assert.equal(result.bundleEvaluations, 1);
+        assert.equal(result.converterConstructions, 2);
+        assert.equal(result.detachedFirstRootWasUntouched, true);
+        assert.equal(result.currentVariant, "中国");
+    } finally {
+        await browser.close();
+    }
+});
+
+
+test("retries OpenCC after a load failure and leaves the failed card usable", async () => {
+    const browser = await launchBrowser();
+    try {
+        const page = await browser.newPage();
+        const warnings = [];
+        page.on("console", message => {
+            if (message.type() === "warning") warnings.push(message.text());
+        });
+        let scriptRequests = 0;
+        await page.route("https://lapis.test/_lapis_opencc.js", async route => {
+            scriptRequests += 1;
+            if (scriptRequests === 1) {
+                await route.abort("failed");
+                return;
+            }
+            await route.fulfill({
+                body: instrumentedOpenCCSource,
+                contentType: "text/javascript; charset=utf-8",
+            });
+        });
+        await setPersistentPageContent(page);
+
+        await renderPersistentVariantCard(page, "中国");
+        await page.waitForFunction(() => (
+            globalThis.__lapisChineseState?.openCCPromise === null
+        ));
+        const failedCard = await page.evaluate(() => ({
+            hidden: document.querySelector(".script-variants")?.hidden,
+            variantCount: document.querySelectorAll(".script-variant").length,
+        }));
+        assert.equal(failedCard.hidden, true);
+        assert.equal(failedCard.variantCount, 0);
+
+        await renderPersistentVariantCard(page, "中国");
+        await page.waitForFunction(() => (
+            document.querySelector(".script-variant-text")?.textContent === "中國"
+        ));
+        assert.equal(scriptRequests, 2);
+        assert.equal(await page.evaluate(() => globalThis.__openCCBundleEvaluations), 1);
+        assert.equal(await page.evaluate(() => globalThis.__openCCConverterConstructions), 2);
+        assert.equal(
+            warnings.filter(message => message.includes("could not load character conversion data")).length,
+            1,
+        );
     } finally {
         await browser.close();
     }

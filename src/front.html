@@ -26,6 +26,9 @@
     <div id="click" class="tappable">
         <div lang="zh-Hans" class="front-vocab">{{Expression}}</div>
     </div>
+    <template id="click-sentence-template">
+        <div lang="zh-Hans" class="front-sentence">{{Sentence}}</div>
+    </template>
     {{/IsClickCard}}
 
     <!-------- Audio card ----------->
@@ -47,39 +50,51 @@
 </div>
 
 <script>
-  function ClickCard() {
+  (() => {
+    const state = globalThis.__lapisChineseState
+      || (globalThis.__lapisChineseState = {});
+
+    if (state.clickKeyHandler) {
+      document.removeEventListener("keydown", state.clickKeyHandler);
+      state.clickKeyHandler = null;
+    }
+
     const clickElement = document.getElementById("click");
+    const sentenceTemplate = document.getElementById("click-sentence-template");
+    if (clickElement && sentenceTemplate) {
+      const expressionTemplate = document.createDocumentFragment();
+      for (const child of clickElement.childNodes) {
+        expressionTemplate.appendChild(child.cloneNode(true));
+      }
 
-    // Store original content so that we can click back to it
-    const originalContent = clickElement.innerHTML;
+      let showingSentence = false;
+      const toggleContent = () => {
+        const content = showingSentence
+          ? expressionTemplate.cloneNode(true)
+          : sentenceTemplate.content.cloneNode(true);
+        clickElement.replaceChildren(content);
+        showingSentence = !showingSentence;
+      };
 
-    // This is what it is going to click to
-    const clickedContent = `<div lang="zh-Hans" class="front-sentence">{{Sentence}}</div>`;
+      clickElement.addEventListener("click", toggleContent);
+      state.clickKeyHandler = (event) => {
+        if (
+          event.repeat
+          || event.ctrlKey
+          || event.altKey
+          || event.metaKey
+          || event.key.toLowerCase() !== "c"
+        ) return;
+        toggleContent();
+      };
+      document.addEventListener("keydown", state.clickKeyHandler);
+    }
 
-    function toggleContent() {
-      if (clickElement.innerHTML === originalContent) {
-        clickElement.innerHTML = clickedContent;
-      } else {
-        clickElement.innerHTML = originalContent;
+    const audioElement = document.getElementById("audio");
+    if (audioElement) {
+      for (const targetWord of audioElement.querySelectorAll("b")) {
+        targetWord.innerText = "[...]";
       }
     }
-    // Implement the clicking mechanism
-    clickElement.addEventListener("click", (e) => toggleContent());
-    document.addEventListener("keydown", (e) => {
-      if ((event.key === "c") | (event.key === "C")) toggleContent();
-    });
-  }
-
-  function HideTargetWord() {
-    const targetWords = document.querySelectorAll("#audio b");
-    targetWords.forEach((word) => (word.innerText = "[...]"));
-  }
-
-  function initialize() {
-    // Check what card type it is
-    if (`{{IsClickCard}}`) ClickCard();
-    if (`{{IsAudioCard}}`) HideTargetWord();
-  }
-
-  initialize();
+  })();
 </script>

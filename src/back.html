@@ -105,18 +105,81 @@
     </footer>
 </div>
 
+<div id="audio-button-source" hidden>{{ExpressionAudio}}{{SentenceAudio}}</div>
+
 <!----------- Scripts ------------>
-<script src="_lapis_opencc.js"></script>
 <script>
     // Hack to add multiple buttons without Anki playing them multiple times
     function addAudioButtons() {
+        const audioSource = document.getElementById("audio-button-source");
+        if (!audioSource) return;
+
         const audioContainers = document.querySelectorAll(".audio-buttons, .audio-buttons-alt");
-        audioContainers.forEach(audio => audio.innerHTML = `{{ExpressionAudio}}{{SentenceAudio}}`);
+        for (const audioContainer of audioContainers) {
+            const content = document.createDocumentFragment();
+            for (const child of audioSource.childNodes) {
+                content.appendChild(child.cloneNode(true));
+            }
+            audioContainer.replaceChildren(content);
+        }
     }
 
     // <script-variants>
+    function lapisChineseState() {
+        return globalThis.__lapisChineseState
+            || (globalThis.__lapisChineseState = {});
+    }
+
+    function validOpenCC(openCC) {
+        return Boolean(openCC && typeof openCC.Converter === "function");
+    }
+
+    function availableOpenCC() {
+        const state = lapisChineseState();
+        if (validOpenCC(state.openCC)) return state.openCC;
+        if (validOpenCC(globalThis.OpenCC)) {
+            state.openCC = globalThis.OpenCC;
+            return state.openCC;
+        }
+        return null;
+    }
+
+    function loadOpenCC() {
+        const state = lapisChineseState();
+        const available = availableOpenCC();
+        if (available) return Promise.resolve(available);
+        if (state.openCCPromise) return state.openCCPromise;
+
+        const script = document.createElement("script");
+        script.src = "_lapis_opencc.js";
+        script.async = true;
+
+        state.openCCPromise = new Promise((resolve, reject) => {
+            script.addEventListener("load", () => {
+                if (!validOpenCC(globalThis.OpenCC)) {
+                    reject(new Error("The OpenCC media script did not expose a converter."));
+                    return;
+                }
+                state.openCC = globalThis.OpenCC;
+                resolve(state.openCC);
+            }, {once: true});
+            script.addEventListener("error", () => {
+                reject(new Error("The OpenCC media script could not be loaded."));
+            }, {once: true});
+            document.head.appendChild(script);
+        }).catch(error => {
+            script.remove();
+            state.openCCPromise = null;
+            console.warn("Lapis Chinese could not load character conversion data.", error);
+            throw error;
+        });
+
+        return state.openCCPromise;
+    }
+
     function expressionVariantConverters(openCC) {
-        const cached = globalThis.__lapisChineseOpenCCConverters;
+        const state = lapisChineseState();
+        const cached = state.openCCConverters;
         if (cached?.openCC === openCC) return cached;
 
         const converters = {
@@ -124,7 +187,7 @@
             toTraditional: openCC.Converter({from: "cn", to: "tw"}),
             toSimplified: openCC.Converter({from: "tw", to: "cn"}),
         };
-        globalThis.__lapisChineseOpenCCConverters = converters;
+        state.openCCConverters = converters;
         return converters;
     }
 
@@ -167,10 +230,9 @@
         }
     }
 
-    function renderExpressionVariants(openCC = globalThis.OpenCC) {
-        const lapis = document.getElementById("lapis");
-        const vocab = document.querySelector(".vocab");
-        const container = document.querySelector(".script-variants");
+    function renderExpressionVariants(lapis, openCC = availableOpenCC()) {
+        const vocab = lapis?.querySelector(".vocab");
+        const container = lapis?.querySelector(".script-variants");
         if (!lapis || !vocab || !container) return false;
 
         const display = expressionVariantDisplay(vocab.textContent, openCC);
@@ -199,6 +261,23 @@
 
         container.hidden = display.variants.length === 0;
         return display.variants.length > 0;
+    }
+
+    function renderExpressionVariantsWhenReady(lapis) {
+        const isCurrentCard = () => (
+            lapis?.isConnected && document.getElementById("lapis") === lapis
+        );
+        const available = availableOpenCC();
+        if (available) {
+            if (isCurrentCard()) renderExpressionVariants(lapis, available);
+            return;
+        }
+
+        loadOpenCC().then(openCC => {
+            if (isCurrentCard()) renderExpressionVariants(lapis, openCC);
+        }).catch(() => {
+            // Loading already logged the failure. Leave the variant container hidden.
+        });
     }
     // </script-variants>
 
@@ -380,22 +459,26 @@
         return /^\p{Script=Han}$/u.test(character);
     }
 
-    function toneSequenceForExpression(expression, reading) {
-        const hanCharacters = Array.from(expression).filter(isHanCharacter);
-        if (hanCharacters.length === 0) return null;
+    function hanCharacters(value) {
+        return Array.from(value).filter(isHanCharacter);
+    }
 
-        const tones = parsePinyinTones(reading, hanCharacters.length);
-        if (!tones || hanCharacters.length !== tones.length) return null;
+    function toneSequenceForExpression(expression, reading) {
+        const expressionHanCharacters = hanCharacters(expression);
+        if (expressionHanCharacters.length === 0) return null;
+
+        const tones = parsePinyinTones(reading, expressionHanCharacters.length);
+        if (!tones || expressionHanCharacters.length !== tones.length) return null;
         return tones;
     }
 
     function hanText(value) {
-        return Array.from(value).filter(isHanCharacter).join("");
+        return hanCharacters(value).join("");
     }
 
     function applyToneSequence(element, tones) {
         if (!element || element.dataset.toneColored === "true") return false;
-        if (hanText(element.textContent).length !== tones.length) return false;
+        if (hanCharacters(element.textContent).length !== tones.length) return false;
 
         const showText = document.defaultView?.NodeFilter?.SHOW_TEXT ?? 4;
         const walker = document.createTreeWalker(element, showText);
@@ -446,8 +529,18 @@
     function splitTags() {
         const tagsContainer = document.querySelector(".tags-container");
         if (!tagsContainer) return;
-        const tags = `{{Tags}}`.split(" ");
-        tagsContainer.innerHTML = tags.map(tag =>`<div class="tags">${tag}</div>`).join('');
+
+        const tagsSource = tagsContainer.querySelector(":scope > .tags");
+        if (!tagsSource) return;
+        const tags = tagsSource.textContent.trim().split(/\s+/u).filter(Boolean);
+        const content = document.createDocumentFragment();
+        for (const tag of tags) {
+            const tagElement = document.createElement("div");
+            tagElement.className = "tags";
+            tagElement.textContent = tag;
+            content.appendChild(tagElement);
+        }
+        tagsContainer.replaceChildren(content);
     }
 
     // Returns the dictionary content, without the dictionary name.
@@ -704,10 +797,17 @@
 
     // Initialize all functions!!!
     function initialize() {
+        const state = lapisChineseState();
+        if (state.clickKeyHandler) {
+            document.removeEventListener("keydown", state.clickKeyHandler);
+            state.clickKeyHandler = null;
+        }
+
+        const lapis = document.getElementById("lapis");
         addAudioButtons();
         userSettings();
         splitTags();
-        renderExpressionVariants();
+        renderExpressionVariantsWhenReady(lapis);
         applyToneColors();
         setUpDefToggle();
         clickImages();
