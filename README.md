@@ -1,30 +1,9 @@
 # Lapis Chinese
 
-Lapis Chinese is a Mandarin Chinese adaptation of the
-[Lapis](https://github.com/donkuri/lapis) Anki note type. It preserves Lapis's card
-layouts, dictionary navigation, audio, images, frequency display, mobile layout,
-and optional card modes while replacing Japanese furigana and pitch-accent logic
-with per-character Mandarin tone coloring.
-
-The large vocabulary word on the back is colored from `ExpressionReading`:
-
-| Tone | Pleco mapping | Light | Dark |
-| --- | --- | --- | --- |
-| 1 | red | `#e30000` | `#ff6666` |
-| 2 | green | `#02b31c` | `#4ade80` |
-| 3 | blue | `#1510f0` | `#6ea8ff` |
-| 4 | purple | `#8900bf` | `#c084fc` |
-| 5 / neutral | gray | `#777777` | `#a3a3a3` |
-
-The back-side header and matching bold target words in the sentence are colored.
-Pinyin, definitions, and unrelated bold text keep their normal styling.
-
-The back also shows the other Chinese character form beneath the expression. A
-Simplified expression gets a labeled Traditional form and vice versa. Conversion
-uses the bundled `opencc-js` library locally and does not require another Anki
-field, custom Yomitan Handlebars, or network access during review. Taiwan
-Traditional orthography is used without regional vocabulary substitution; words
-whose two forms are identical do not get a duplicate line.
+Lapis Chinese is a Mandarin adaptation of the
+[Lapis](https://github.com/donkuri/lapis) Anki note type. It brings the familiar
+Lapis card design and features to Chinese vocabulary and sentence cards, with
+support for Pinyin and Simplified and Traditional characters.
 
 ## Install the APKG
 
@@ -64,41 +43,6 @@ This is the complete model schema and recommended mapping:
 
 Set at most one `Is…Card` field. With all four blank, the note produces the normal
 vocabulary card.
-
-### Pinyin requirements
-
-`ExpressionReading` must contain explicit tone information. The parser accepts:
-
-- Diacritics: `zhōng guó`, compact `zhōngguó` or `huáfà`, `nǚ ér`, `xī'ān`
-- Numbers: `zhong1 guo2`, `ni3 hao3`, or compact `ni3hao3`
-- Neutral tone: `ma5`, `ma0`, or an unmarked syllable in an otherwise marked
-  reading such as `mā ma` or compact `péngyou`
-- Umlaut variants: `lǜ`, `lü4`, `lv4`, and `lu:4`
-
-Compact readings are segmented against the expression's Han-character count and
-valid Mandarin syllable spellings. If more than one segmentation is possible,
-add an apostrophe or space at the intended boundary; otherwise the word remains
-uncolored. Wholly untoned readings, multiple alternatives, invalid input, and
-readings without exactly one syllable per Han character also remain uncolored.
-This fail-closed behavior prevents incorrect tone cues. Colors reflect the
-dictionary reading literally; the template does not calculate tone sandhi.
-
-## Manual template installation
-
-Copy these files into Anki's card editor:
-
-- `src/front.html` → Front Template
-- `src/back.html` → Back Template
-- `src/styling.css` → Styling
-
-Also copy `vendor/opencc-js-1.4.1/_lapis_opencc.js` into the active Anki
-profile's `collection.media` directory. The filename must keep its leading
-underscore. The APKG already installs this media file automatically.
-
-The template sources live in `src/`, and the pinned conversion bundle and its
-license files live in `vendor/opencc-js-1.4.1/`. The back detects the primary
-expression's script and applies `lang="zh-Hans"` or `lang="zh-Hant"` to select the
-appropriate CJK glyph forms.
 
 ## Build
 
