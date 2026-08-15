@@ -1,0 +1,52 @@
+# Generated packages and build output
+build/
+dist/
+*.apkg
+
+# Unused legacy Lapis documentation assets
+assets/Lapis.gif
+assets/furiganaAJT.png
+assets/furiganaBulk.png
+assets/import_options.png
+assets/jpmn-to-lapis-change-notetype.png
+assets/pitchAJT.png
+
+# Dependencies and virtual environments
+.venv/
+node_modules/
+
+# Python and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+test-results/
+playwright-report/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.key
+*.pem
+*.p12
+*.pfx
+.npmrc
+.pypirc
+
+# Local editor and agent state
+.agents/
+.codex/
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs and operating-system metadata
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini

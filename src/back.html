@@ -1,0 +1,721 @@
+<div id="lapis" lang="zh-Hans">
+    <!---------- Header ------------->
+    <header>
+        <div class="top-container">
+            <!-- Show the frequency number -->
+            {{FreqSort}}
+
+            <!-- The frequency list -->
+            {{#Frequency}}
+            <span class="freq-dropdown">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" class="dropdown-arrow-svg"
+                    viewBox="0 0 16 16">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path>
+                    <path d="M 12.7,6.5 H 3.3 L 8,11 Z"></path>
+                </svg>
+                <div class="freq-list-container">{{Frequency}}</div>
+            </span>
+            {{/Frequency}}
+        </div>
+    </header>
+
+    <main>
+        <!-- The first row (vocab box+picture) -->
+        <div class="def-header">
+            <div class="dh-vocab">
+                <div class="vocab">{{Expression}}</div>
+                <div class="script-variants" aria-label="Chinese character variants" hidden></div>
+
+                <!-- Pinyin reading -->
+                <div class="info">
+                    <div class="reading">{{ExpressionReading}}</div>
+                    <br />
+                    <div class="audio-buttons"></div>
+                </div>
+            </div>
+
+            <!-- Image -->
+            {{#Picture}}
+            <div class="dh-image">
+                <div class="image tappable {{Tags}}">{{Picture}}</div>
+            </div>
+            {{/Picture}}
+        </div>
+
+        <br>
+        <div class="sentence">
+            {{#Picture}}<div class="image-alt tappable {{Tags}}">{{Picture}}</div>{{/Picture}}
+                {{Sentence}}
+            <div class="audio-buttons-alt"></div>
+        </div>
+
+        <!-- The entire definition box -->
+        <div class="def-info">First Definition 1/?</div>
+        <div class="main-def">
+            <div class="edge tappable" id="edge-prev" onclick="changeIndex(-1)"></div>
+            <div class="edge tappable" id="edge-next" onclick="changeIndex(1)"></div>
+            {{#DefinitionPicture}}
+            <div class="def-image tappable">{{DefinitionPicture}}</div>
+            {{/DefinitionPicture}}
+            <div class="definition">
+                {{#SelectionText}}
+                <div id="selection" data-display-name="Text Selection">{{SelectionText}}</div>
+                {{/SelectionText}}
+                {{#MainDefinition}}
+                <div id="primary" data-display-name="Primary Definition">{{MainDefinition}}</div>
+                {{/MainDefinition}}
+                <div id="glossaries" data-display-name="Glossaries">{{Glossary}}</div>
+            </div>
+        </div>
+
+        <!-- Alternative Sentence Position -->
+        <div class="sentence-alt">
+            {{#Picture}}<div class="image-alt tappable {{Tags}}">{{Picture}}</div>{{/Picture}}
+                {{Sentence}}
+            <div class="audio-buttons-alt"></div>
+        </div>
+
+        <!------- Image modal --------->
+        <div class="modal-bg tappable">
+            <div class="img-popup"></div>
+        </div>
+
+        {{#MiscInfo}}
+        <details>
+            <summary>Misc. info</summary>
+            <div class="misc-info">
+                === Details ===
+                <br />
+                {{MiscInfo}}
+            </div>
+        </details>
+        {{/MiscInfo}}
+    </main>
+
+    <!----------- Footer ------------->
+    <footer>
+        <br>
+        <div class="bot-container">
+            {{#Tags}}
+            <div class="tags-container">
+                <div class="tags">{{Tags}}</div>
+            </div>
+            {{/Tags}}
+        </div>
+    </footer>
+</div>
+
+<!----------- Scripts ------------>
+<script src="_lapis_opencc.js"></script>
+<script>
+    // Hack to add multiple buttons without Anki playing them multiple times
+    function addAudioButtons() {
+        const audioContainers = document.querySelectorAll(".audio-buttons, .audio-buttons-alt");
+        audioContainers.forEach(audio => audio.innerHTML = `{{ExpressionAudio}}{{SentenceAudio}}`);
+    }
+
+    // <script-variants>
+    function expressionVariantConverters(openCC) {
+        const cached = globalThis.__lapisChineseOpenCCConverters;
+        if (cached?.openCC === openCC) return cached;
+
+        const converters = {
+            openCC,
+            toTraditional: openCC.Converter({from: "cn", to: "tw"}),
+            toSimplified: openCC.Converter({from: "tw", to: "cn"}),
+        };
+        globalThis.__lapisChineseOpenCCConverters = converters;
+        return converters;
+    }
+
+    function expressionVariantDisplay(expression, openCC = globalThis.OpenCC) {
+        const value = expression.trim();
+        if (!value || !openCC || typeof openCC.Converter !== "function") return null;
+
+        try {
+            const {toTraditional, toSimplified} = expressionVariantConverters(openCC);
+            const traditional = toTraditional(value);
+            const simplified = toSimplified(value);
+
+            if (value === simplified && value !== traditional) {
+                return {
+                    primaryLanguage: "zh-Hans",
+                    variants: [{label: "繁", text: traditional, language: "zh-Hant"}],
+                };
+            }
+            if (value === traditional && value !== simplified) {
+                return {
+                    primaryLanguage: "zh-Hant",
+                    variants: [{label: "简", text: simplified, language: "zh-Hans"}],
+                };
+            }
+            if (value === simplified && value === traditional) {
+                return {primaryLanguage: "zh-Hans", variants: []};
+            }
+
+            const variants = [];
+            if (simplified !== value) {
+                variants.push({label: "简", text: simplified, language: "zh-Hans"});
+            }
+            if (traditional !== value && traditional !== simplified) {
+                variants.push({label: "繁", text: traditional, language: "zh-Hant"});
+            }
+            return {primaryLanguage: "zh", variants};
+        } catch (error) {
+            console.warn("Lapis Chinese could not convert character variants.", error);
+            return null;
+        }
+    }
+
+    function renderExpressionVariants(openCC = globalThis.OpenCC) {
+        const lapis = document.getElementById("lapis");
+        const vocab = document.querySelector(".vocab");
+        const container = document.querySelector(".script-variants");
+        if (!lapis || !vocab || !container) return false;
+
+        const display = expressionVariantDisplay(vocab.textContent, openCC);
+        if (!display) return false;
+
+        lapis.lang = display.primaryLanguage;
+        vocab.lang = display.primaryLanguage;
+        container.replaceChildren();
+
+        for (const variant of display.variants) {
+            const row = document.createElement("div");
+            row.className = "script-variant";
+            row.lang = variant.language;
+
+            const label = document.createElement("span");
+            label.className = "script-variant-label";
+            label.textContent = variant.label;
+
+            const text = document.createElement("span");
+            text.className = "script-variant-text";
+            text.textContent = variant.text;
+
+            row.append(label, text);
+            container.appendChild(row);
+        }
+
+        container.hidden = display.variants.length === 0;
+        return display.variants.length > 0;
+    }
+    // </script-variants>
+
+    // <tone-coloring>
+    // Anki re-evaluates card scripts in a long-lived preview/reviewer page.
+    // These top-level lookups must be redeclarable when another card is shown.
+    var PINYIN_TONE_MARKS = new Map([
+        ["\u0304", 1], // macron
+        ["\u0301", 2], // acute
+        ["\u030C", 3], // caron
+        ["\u0300", 4], // grave
+    ]);
+
+    var VALID_PINYIN_BASES = new Set(`
+        a ai an ang ao e ei en eng er o ou
+        ba bai ban bang bao bei ben beng bi bian biao bie bin bing bo bu
+        pa pai pan pang pao pei pen peng pi pian piao pie pin ping po pou pu
+        ma mai man mang mao me mei men meng mi mian miao mie min ming miu mo mou mu
+        fa fan fang fei fen feng fo fou fu
+        da dai dan dang dao de dei den deng di dia dian diao die ding diu dong dou du duan dui dun duo
+        ta tai tan tang tao te teng ti tian tiao tie ting tong tou tu tuan tui tun tuo
+        na nai nan nang nao ne nei nen neng ni nian niang niao nie nin ning niu nong nou nu nuan nuo nv nve
+        la lai lan lang lao le lei leng li lia lian liang liao lie lin ling liu lo long lou lu luan lun luo lv lve
+        ga gai gan gang gao ge gei gen geng gong gou gu gua guai guan guang gui gun guo
+        ka kai kan kang kao ke ken keng kong kou ku kua kuai kuan kuang kui kun kuo
+        ha hai han hang hao he hei hen heng hm hng hong hou hu hua huai huan huang hui hun huo
+        ji jia jian jiang jiao jie jin jing jiong jiu ju juan jue jun
+        qi qia qian qiang qiao qie qin qing qiong qiu qu quan que qun
+        xi xia xian xiang xiao xie xin xing xiong xiu xu xuan xue xun
+        zha zhai zhan zhang zhao zhe zhei zhen zheng zhi zhong zhou zhu zhua zhuai zhuan zhuang zhui zhun zhuo
+        cha chai chan chang chao che chen cheng chi chong chou chu chua chuai chuan chuang chui chun chuo
+        sha shai shan shang shao she shei shen sheng shi shou shu shua shuai shuan shuang shui shun shuo
+        ran rang rao re ren reng ri rong rou ru ruan rui run ruo
+        za zai zan zang zao ze zei zen zeng zi zong zou zu zuan zui zun zuo
+        ca cai can cang cao ce cen ceng ci cong cou cu cuan cui cun cuo
+        sa sai san sang sao se sen seng si song sou su suan sui sun suo
+        yi ya yao ye you yan yin yang ying yong
+        wu wa wo wai wei wan wen wang weng
+        yu yue yuan yun yo m n ng
+    `.trim().split(/\s+/u));
+
+    function splitPinyinChunks(reading) {
+        const trimmed = reading.trim();
+        if (!trimmed || /[\/;,，；、]/u.test(trimmed)) return null;
+
+        const chunks = trimmed
+            .replace(/[\u0027\u02BC\u2018\u2019\-\u2010-\u2015]+/gu, " ")
+            .split(/\s+/u)
+            .filter(Boolean);
+        return chunks.length > 0 ? chunks : null;
+    }
+
+    function splitPinyinSyllables(reading) {
+        const chunks = splitPinyinChunks(reading);
+        if (!chunks) return null;
+        const syllables = [];
+
+        for (const chunk of chunks) {
+            // A trailing tone digit provides an unambiguous boundary, so this
+            // also accepts compact numbered Pinyin such as "ni3hao3".
+            const matches = chunk.match(/[\p{Letter}\p{Mark}:]+[0-5]?/gu) || [];
+            if (matches.length === 0 || matches.join("") !== chunk) return null;
+            syllables.push(...matches);
+        }
+
+        return syllables.length > 0 ? syllables : null;
+    }
+
+    function parsePinyinSyllable(syllable) {
+        const numericMatch = syllable.match(/[0-5]$/u);
+        const numericTone = numericMatch
+            ? (numericMatch[0] === "0" || numericMatch[0] === "5" ? 5 : Number(numericMatch[0]))
+            : null;
+        const letters = numericMatch ? syllable.slice(0, -1) : syllable;
+        const normalized = letters
+            .toLowerCase()
+            .replace(/u:/gu, "ü")
+            .normalize("NFD");
+        const markedTones = Array.from(normalized)
+            .map(character => PINYIN_TONE_MARKS.get(character))
+            .filter(tone => tone !== undefined);
+
+        if (markedTones.length > 1) return null;
+        const markedTone = markedTones[0] ?? null;
+        if (numericTone !== null && markedTone !== null && numericTone !== markedTone) return null;
+
+        const base = normalized
+            .replace(/[\u0300\u0301\u0304\u030C]/gu, "")
+            .normalize("NFC")
+            .replace(/ü/gu, "v");
+        if (!/^[a-zv]+$/u.test(base)) return null;
+
+        const tone = numericTone ?? markedTone;
+        return {tone, explicit: tone !== null, base};
+    }
+
+    function isValidPinyinBase(base) {
+        if (VALID_PINYIN_BASES.has(base)) return true;
+        return base.endsWith("r") && base !== "er" && VALID_PINYIN_BASES.has(base.slice(0, -1));
+    }
+
+    function tonesForSyllables(syllables) {
+        if (!syllables) return null;
+
+        const parsed = syllables.map(parsePinyinSyllable);
+        if (parsed.some(value => value === null || !isValidPinyinBase(value.base))) return null;
+        if (!parsed.some(value => value.explicit)) return null;
+
+        // In otherwise tone-marked Pinyin, an unmarked syllable is neutral.
+        return parsed.map(value => value.tone ?? 5);
+    }
+
+    function segmentCompactPinyin(reading, expectedSyllableCount) {
+        if (!Number.isInteger(expectedSyllableCount) || expectedSyllableCount < 1) return null;
+
+        const chunks = splitPinyinChunks(reading);
+        if (!chunks || chunks.length > expectedSyllableCount) return null;
+
+        const charactersByChunk = chunks.map(chunk => Array.from(chunk.normalize("NFC")));
+        const syllables = [];
+        const solutions = [];
+
+        function walk(chunkIndex, characterIndex, syllablesRemaining) {
+            if (solutions.length > 1) return;
+            if (chunkIndex === charactersByChunk.length) {
+                if (syllablesRemaining === 0) solutions.push(syllables.slice());
+                return;
+            }
+
+            const characters = charactersByChunk[chunkIndex];
+            if (characterIndex === characters.length) {
+                walk(chunkIndex + 1, 0, syllablesRemaining);
+                return;
+            }
+
+            const nonemptyChunksRemaining = charactersByChunk.length - chunkIndex;
+            if (syllablesRemaining < nonemptyChunksRemaining) return;
+
+            const wholeChunk = characters.join("");
+            const parsedWholeChunk = parsePinyinSyllable(wholeChunk);
+            const preserveExplicitSyllable = characterIndex === 0
+                && parsedWholeChunk
+                && isValidPinyinBase(parsedWholeChunk.base);
+
+            for (let end = characterIndex + 1; end <= characters.length; end += 1) {
+                if (preserveExplicitSyllable && end !== characters.length) continue;
+
+                const candidate = characters.slice(characterIndex, end).join("");
+                const parsed = parsePinyinSyllable(candidate);
+                // An -r suffix is valid only when the whole reading is already
+                // one syllable. Treating it as a compact boundary could turn
+                // huār into the incorrect two-syllable split hu + ār.
+                if (!parsed || !VALID_PINYIN_BASES.has(parsed.base)) continue;
+
+                syllables.push(candidate);
+                walk(chunkIndex, end, syllablesRemaining - 1);
+                syllables.pop();
+            }
+        }
+
+        walk(0, 0, expectedSyllableCount);
+        return solutions.length === 1 ? solutions[0] : null;
+    }
+
+    function parsePinyinTones(reading, expectedSyllableCount = null) {
+        const directSyllables = splitPinyinSyllables(reading);
+        const directTones = tonesForSyllables(directSyllables);
+        if (directTones && (
+            expectedSyllableCount === null || directTones.length === expectedSyllableCount
+        )) {
+            return directTones;
+        }
+
+        if (expectedSyllableCount === null) return null;
+        return tonesForSyllables(segmentCompactPinyin(reading, expectedSyllableCount));
+    }
+
+    function isHanCharacter(character) {
+        return /^\p{Script=Han}$/u.test(character);
+    }
+
+    function toneSequenceForExpression(expression, reading) {
+        const hanCharacters = Array.from(expression).filter(isHanCharacter);
+        if (hanCharacters.length === 0) return null;
+
+        const tones = parsePinyinTones(reading, hanCharacters.length);
+        if (!tones || hanCharacters.length !== tones.length) return null;
+        return tones;
+    }
+
+    function hanText(value) {
+        return Array.from(value).filter(isHanCharacter).join("");
+    }
+
+    function applyToneSequence(element, tones) {
+        if (!element || element.dataset.toneColored === "true") return false;
+        if (hanText(element.textContent).length !== tones.length) return false;
+
+        const showText = document.defaultView?.NodeFilter?.SHOW_TEXT ?? 4;
+        const walker = document.createTreeWalker(element, showText);
+        const textNodes = [];
+        while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+        let toneIndex = 0;
+        for (const textNode of textNodes) {
+            const fragment = document.createDocumentFragment();
+            for (const character of Array.from(textNode.nodeValue)) {
+                if (!isHanCharacter(character)) {
+                    fragment.appendChild(document.createTextNode(character));
+                    continue;
+                }
+
+                const span = document.createElement("span");
+                span.className = `tone-${tones[toneIndex]}`;
+                span.textContent = character;
+                fragment.appendChild(span);
+                toneIndex += 1;
+            }
+            textNode.parentNode.replaceChild(fragment, textNode);
+        }
+
+        element.dataset.toneColored = "true";
+        return true;
+    }
+
+    function applyToneColors() {
+        const vocab = document.querySelector(".vocab");
+        const reading = document.querySelector(".reading");
+        if (!vocab || !reading) return false;
+
+        const expressionHan = hanText(vocab.textContent);
+        const tones = toneSequenceForExpression(vocab.textContent, reading.textContent);
+        if (!tones) return false;
+
+        let applied = applyToneSequence(vocab, tones);
+        for (const target of document.querySelectorAll(".sentence b, .sentence-alt b")) {
+            if (hanText(target.textContent) !== expressionHan) continue;
+            applied = applyToneSequence(target, tones) || applied;
+        }
+        return applied;
+    }
+    // </tone-coloring>
+
+    // Seperate Tags by space, and show them in their own boxes
+    function splitTags() {
+        const tagsContainer = document.querySelector(".tags-container");
+        if (!tagsContainer) return;
+        const tags = `{{Tags}}`.split(" ");
+        tagsContainer.innerHTML = tags.map(tag =>`<div class="tags">${tag}</div>`).join('');
+    }
+
+    // Returns the dictionary content, without the dictionary name.
+    function getDictionaryContent(dictionarySelector) {
+        const dictionary = document.querySelector(dictionarySelector);
+        if (!dictionary) return null;
+        const contentInSpan = dictionary.querySelector(":scope > span");
+        if (contentInSpan) return contentInSpan;
+
+        const hasDictName = dictionary.querySelector(":scope > i");
+        if (!hasDictName) return dictionary;
+
+        let dictionaryCopy = dictionary.cloneNode(true);
+        dictName = dictionaryCopy.querySelector(":scope > i");
+        dictName.remove();
+        return dictionaryCopy;
+    }
+
+    function isPrimaryEqualToGloss() {
+        const isJPMNConverted = document.querySelector(".definition li[data-details]");
+        if (isJPMNConverted) return false;
+        // single dict formatting
+        const isSingleDict = document.querySelectorAll("#glossaries > div > ol").length === 0;
+        if (isSingleDict) {
+            const primaryDictName = document.querySelector("#primary > div > i");
+            const glossariesDictName = document.querySelector("#glossaries > div > i");
+            // Compare dicts names if present
+            if (primaryDictName && glossariesDictName) {
+                return primaryDictName.textContent === glossariesDictName.textContent;
+            }
+            // Compare content otherwise
+            const primaryDict = getDictionaryContent("#primary > div");
+            const glossariesDict = getDictionaryContent("#glossaries > div");
+            if (!primaryDict || !glossariesDict ) return false;
+            return primaryDict.innerHTML.trim() === glossariesDict.innerHTML.trim();
+        }
+
+        // multiple dicts
+        const primaryDicts = document.querySelectorAll("#primary li[data-dictionary]");
+        const glossariesDicts = document.querySelectorAll("#glossaries li[data-dictionary]");
+        return primaryDicts.length === glossariesDicts.length;
+    }
+
+    // Removes Unnecessary definitions
+    function cleanUpDefinitions() {
+        let selection = document.getElementById("selection");
+        let primary = document.getElementById("primary");
+        let glossaries = document.getElementById("glossaries");
+        if (selection && selection.textContent === "") {
+            selection.remove();
+        }
+        if (primary && primary.textContent === "") {
+            primary.remove();
+            primary = null;
+        }
+        if (glossaries && glossaries.textContent === "") {
+            glossaries.remove();
+            glossaries = null;
+        }
+        else if (primary && glossaries && isPrimaryEqualToGloss()) {
+            glossaries.remove();
+        }
+    }
+
+    // Display definition corresponding to index
+    function updateDefDisplay() {
+        const definitions = document.querySelectorAll(
+            ".main-def > .definition > div"
+        );
+
+        let n_defs = definitions.length;
+        if (n_defs === 1) definitions[0].classList.remove("hidden");
+        if (n_defs <= 1) return;
+
+        let currentIndex = document.head.dataset.defIndex;
+        currentIndex = currentIndex % n_defs;
+        while (currentIndex < 0) currentIndex += n_defs;
+
+        for (let idx = 0; idx < n_defs; idx++) {
+            definitions[idx].classList.add("hidden");
+        }
+        definitions[currentIndex].classList.remove("hidden");
+
+        const defDisplayName = definitions[currentIndex].dataset.displayName;
+        const indexDisplay = document.querySelector(".def-info");
+        indexDisplay.style.visibility = "visible";
+        indexDisplay.innerText = `${defDisplayName} ${currentIndex + 1}/${n_defs}`;
+    }
+
+    function changeIndex(value) {
+        // sync index between clicks and arrowkeys
+        index = Number(document.head.dataset.defIndex);
+        document.head.dataset.defIndex = index + value;
+        updateDefDisplay();
+    };
+
+    function setUpDefToggle() {
+        document.head.dataset.defIndex = 0;
+        cleanUpDefinitions();
+
+        // Show the first definition and ensure the index display, if relevant, is visible on initial load
+        updateDefDisplay();
+
+        // Since <head> doesn't change through review sessions
+        // Adding and checking for this class ensure each card doesn't add its own listener
+        if (document.head.classList.contains("has-listener")) return;
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowLeft") changeIndex(-1);
+            else if (e.key === "ArrowRight") changeIndex(1);
+        });
+
+        document.head.classList.add("has-listener");
+    }
+
+    // Image lightbox with fade transition similar to JPMN
+    function clickImages() {
+        const modalBg = document.querySelector(".modal-bg");
+        const imgPopup = document.querySelector(".img-popup");
+        let images = Array.from(document.querySelectorAll(".image img, .image-alt img, .def-image img"));
+        /* Disable image links that were opening in a browser window */
+        const glossImageLinks = document.querySelectorAll(".definition a:has(img)");
+        glossImageLinks.forEach(link => link.href = "");
+
+        images = [... images, ... glossImageLinks];
+        if(images.length < 1) return;
+        for (let image of images) {
+            image.addEventListener("click", () => {
+                const imgPopupContainer = document.createElement("div");
+                const imgPopupImg = document.createElement("img");
+
+                imgPopupContainer.classList.add("img-popup-container");
+                imgPopupImg.src = image.src || image.querySelector("img").src;
+                imgPopupImg.classList.add("img-popup-img");
+
+                if (image.height > image.width) {
+                    imgPopupContainer.style.height = "calc(100% - 20px)";
+                    imgPopupContainer.style.width = "max-content";
+                }
+
+                imgPopup.innerHTML = "";
+                imgPopup.appendChild(imgPopupContainer);
+                imgPopupContainer.appendChild(imgPopupImg);
+
+                // Force a reflow before adding active classes to ensure transitions work
+                void modalBg.offsetWidth;
+
+                // Show the modal background with fade transition
+                modalBg.style.display = "block";
+
+                // Force another reflow to ensure the display change takes effect before transition
+                void modalBg.offsetWidth;
+
+                modalBg.classList.add("active");
+                imgPopupContainer.classList.add("active");
+                document.body.classList.add("img-popup");
+            });
+        }
+
+        modalBg.addEventListener("click", () => {
+            // Removes active classes to trigger fade-out transition
+            modalBg.classList.remove("active");
+            const activeContainer = document.querySelector(".img-popup-container.active");
+            if (activeContainer) {
+                activeContainer.classList.remove("active");
+            }
+            setTimeout(() => {
+                document.body.classList.remove("img-popup");
+                modalBg.style.display = "none";
+                imgPopup.innerHTML = "";
+            }, 300);
+        });
+    }
+
+    // Format plaintext comma-separated frequencies into a list
+    function formatFrequencyList() {
+        const frequency = document.querySelector('.freq-list-container');
+        if (!frequency) return;
+        const frequencyList = frequency.querySelector('ul');
+        // Already a list; nothing to do
+        if (frequencyList) return;
+
+        const freqs = frequency.innerText.split(',');
+        const freqHtml = `<ul>${freqs.map(freq => `<li>${freq.trim()}</li>`).join('')}</ul>`
+        frequency.innerHTML = freqHtml;
+    }
+
+    // Sets the height of dhVocab, dhImage, defHeader as a whole
+    function setDHHeight() {
+        var dhVocab = document.querySelector('.dh-vocab');
+        var dhImage = document.querySelector('.dh-image img');
+        var defHeader = document.querySelector('.def-header');
+
+        if (dhVocab && dhImage) {
+            var dhVocabHeight = dhVocab.offsetHeight;
+            dhImage.style.maxHeight = `${dhVocabHeight}px`;
+            defHeader.style.maxHeight = `${dhVocabHeight}px`;
+        }
+    }
+
+    // Hides the dictionaries user selected in MainDefinition in Glossary field, if any
+    function hideCorrectDefinition() {
+        // Do nothing if css rule already exists
+        if (document.querySelector("style#hide-main-def")) return;
+
+        let primaryDicts = document.querySelectorAll("#primary li[data-dictionary]");
+        if (primaryDicts.length === 0) return;
+
+        let style = document.createElement('style');
+        style.type = 'text/css';
+        style.id = "hide-main-def";
+
+        const cssSelector = Array.from(primaryDicts).map((dict) =>
+            `#glossaries li[data-dictionary="${dict.dataset.dictionary}"]`
+        ).join(", ");
+        const cssRules = `${cssSelector} { display:none !important; }`;
+        style.appendChild(document.createTextNode(cssRules));
+
+        let defContainer = document.querySelector(".main-def");
+        defContainer.appendChild(style);
+    }
+
+    // Fixes list numbering when using multiple primary dicts
+    function movePrimaryDicts() {
+        let primaryDicts = document.querySelectorAll("#primary li[data-dictionary]");
+        let firstList = document.querySelector("#primary .yomitan-glossary > ol:has(li[data-dictionary])");
+        for (let idx = 1; idx < primaryDicts.length; idx++) {
+            firstList.appendChild(primaryDicts[idx]);
+        }
+    }
+
+    // Read user settings and set them as html attributes
+    function userSettings() {
+        const styles = getComputedStyle(document.documentElement);
+        const miscInfo = document.querySelector("details:has(.misc-info)");
+        const lapis = document.getElementById("lapis");
+        const options = [
+            "--main-picture-position",
+            "--sentence-position",
+            "--audio-buttons",
+            "--nsfw-blur-contained",
+            "--open-misc-info",
+            "--glossary-separator",
+            "--jitendex-format"
+        ];
+        for (const opt of options) {
+            let value = styles.getPropertyValue(opt);
+            value = value.replace(/^['"]|['"]$/g,"").trim().toLowerCase();
+            lapis.setAttribute("data-" + opt.slice(2), value);
+            if (opt === "--open-misc-info" && value === "on" && miscInfo) {
+                miscInfo.open = true;
+            }
+        }
+    }
+
+    // Initialize all functions!!!
+    function initialize() {
+        addAudioButtons();
+        userSettings();
+        splitTags();
+        renderExpressionVariants();
+        applyToneColors();
+        setUpDefToggle();
+        clickImages();
+        formatFrequencyList();
+        setDHHeight();
+        hideCorrectDefinition();
+        movePrimaryDicts();
+    }
+
+    initialize();
+</script>

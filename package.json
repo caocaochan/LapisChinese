@@ -1,0 +1,12 @@
+{
+  "name": "lapis-chinese",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/tone_coloring.test.mjs tests/script_variants.test.mjs",
+    "test:render": "node --test tests/render_tone_coloring.test.mjs tests/render_script_variants.test.mjs",
+    "test:all-js": "node --test tests/tone_coloring.test.mjs tests/script_variants.test.mjs tests/render_tone_coloring.test.mjs tests/render_script_variants.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.0"
+  }
+}
