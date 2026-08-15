@@ -49,25 +49,67 @@ jobs:
       - name: Test APKG
         run: python -m unittest tests.test_package
 
-      - name: Publish commit release
+      - name: Publish patch release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
 
-          short_sha="${GITHUB_SHA::12}"
-          tag="main-${short_sha}"
-          title="Lapis Chinese ${short_sha}"
+          semver_pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
           asset="dist/LapisChinese.apkg"
+          tag=""
+
+          for attempt in {1..20}; do
+            git fetch --force --tags origin
+
+            tag="$({
+              git tag --points-at "${GITHUB_SHA}" |
+                grep -E "${semver_pattern}" |
+                sort -V |
+                tail -n 1
+            } || true)"
+            if [[ -n "${tag}" ]]; then
+              break
+            fi
+
+            latest_tag="$({
+              git tag --list |
+                grep -E "${semver_pattern}" |
+                sort -V |
+                tail -n 1
+            } || true)"
+            if [[ -z "${latest_tag}" ]]; then
+              latest_tag="v1.0.0"
+            fi
+
+            IFS=. read -r major minor patch <<< "${latest_tag#v}"
+            tag="v${major}.${minor}.$((patch + 1))"
+            git tag "${tag}" "${GITHUB_SHA}"
+
+            if git push origin "refs/tags/${tag}:refs/tags/${tag}"; then
+              break
+            fi
+
+            git tag --delete "${tag}"
+            tag=""
+            sleep 2
+          done
+
+          if [[ -z "${tag}" ]]; then
+            echo "Unable to allocate the next release version" >&2
+            exit 1
+          fi
+
+          title="Lapis Chinese ${tag}"
 
           if gh release view "${tag}" >/dev/null 2>&1; then
             gh release upload "${tag}" "${asset}#LapisChinese.apkg" --clobber
-            gh release edit "${tag}" --latest
+            gh release edit "${tag}" --title "${title}" --latest
           else
             gh release create "${tag}" "${asset}#LapisChinese.apkg" \
-              --target "${GITHUB_SHA}" \
               --title "${title}" \
               --generate-notes \
-              --latest
+              --latest \
+              --verify-tag
           fi

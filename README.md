@@ -114,7 +114,8 @@ python scripts\build_apkg.py
 
 The generated package is written to the ignored `dist/LapisChinese.apkg` path.
 Every commit pushed to `main` runs the complete test suite and publishes a unique
-GitHub release tagged `main-<12-character commit SHA>` with this APKG attached.
+GitHub patch release with this APKG attached. Releases increment from `v1.0.0`
+as `v1.0.1`, `v1.0.2`, and so on.
 
 ## Tests
 
