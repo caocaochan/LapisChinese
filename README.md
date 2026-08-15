@@ -100,6 +100,22 @@ license files live in `vendor/opencc-js-1.4.1/`. The back detects the primary
 expression's script and applies `lang="zh-Hans"` or `lang="zh-Hant"` to select the
 appropriate CJK glyph forms.
 
+## Build
+
+Requirements: Python 3.10 or newer. The packaging dependency is pinned in
+`requirements.txt`.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --requirement requirements.txt
+python scripts\build_apkg.py
+```
+
+The generated package is written to the ignored `dist/LapisChinese.apkg` path.
+Every commit pushed to `main` runs the complete test suite and publishes a unique
+GitHub release tagged `main-<12-character commit SHA>` with this APKG attached.
+
 ## Tests
 
 Parser tests use Node's built-in test runner. The browser-rendering tests use the
@@ -108,11 +124,13 @@ pinned Playwright development dependency.
 ```powershell
 npm install
 npm run test:all-js
+python -m unittest tests.test_package
 ```
 
 The suite covers diacritic and numbered Pinyin, compact numeric readings, neutral
 tones, umlaut spellings, mismatch and ambiguity handling, Simplified/Traditional
-conversion and rendering, graceful converter failure, and template cleanup.
+conversion and rendering, graceful converter failure, template cleanup, stable
+Anki model metadata, and packaged OpenCC media.
 
 ## Customization
 
