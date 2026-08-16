@@ -142,6 +142,24 @@ test("renders compact-diacritic header and matching sentence tones in light and 
 });
 
 
+test("renders compact Pinyin resolved by the apostrophe boundary rule", async () => {
+    const browser = await launchBrowser();
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+            <style>${css}</style>
+            <div class="card nightMode"><div id="qa"></div></div>
+        `);
+
+        const card = await renderPersistentCard(page, "盘根错节", "pángēncuòjié");
+        assert.deepEqual(card.vocabClasses, ["tone-2", "tone-1", "tone-4", "tone-2"]);
+        assert.deepEqual(card.sentenceClasses, ["tone-2", "tone-1", "tone-4", "tone-2"]);
+    } finally {
+        await browser.close();
+    }
+});
+
+
 test("recolors cards after forward and backward navigation in a persistent preview page", async () => {
     const browser = await launchBrowser();
     try {

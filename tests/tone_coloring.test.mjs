@@ -13,10 +13,10 @@ assert.notEqual(start, -1, "tone-coloring start marker is missing");
 assert.notEqual(end, -1, "tone-coloring end marker is missing");
 
 const source = `${backTemplate.slice(start + startMarker.length, end)}
-globalThis.__toneApi = {parsePinyinTones, toneSequenceForExpression};`;
+globalThis.__toneApi = {parsePinyinTones, segmentCompactPinyin, toneSequenceForExpression};`;
 const context = vm.createContext({});
 new vm.Script(source, {filename: "tone-coloring.js"}).runInContext(context);
-const {parsePinyinTones, toneSequenceForExpression} = context.__toneApi;
+const {parsePinyinTones, segmentCompactPinyin, toneSequenceForExpression} = context.__toneApi;
 const plain = value => value === null ? null : Array.from(value);
 
 
@@ -30,6 +30,31 @@ test("segments compact diacritic Pinyin from the expression length", () => {
     assert.deepEqual(plain(toneSequenceForExpression("华发", "huáfà")), [2, 4]);
     assert.deepEqual(plain(toneSequenceForExpression("中国", "zhōngguó")), [1, 2]);
     assert.deepEqual(plain(toneSequenceForExpression("朋友", "péngyou")), [2, 5]);
+});
+
+test("requires separators before non-initial a, o, and e syllables", () => {
+    assert.deepEqual(
+        plain(segmentCompactPinyin("pángēncuòjié", 4)),
+        ["pán", "gēn", "cuò", "jié"],
+    );
+    assert.deepEqual(
+        plain(segmentCompactPinyin("páng’ēncuòjié", 4)),
+        ["páng", "ēn", "cuò", "jié"],
+    );
+    assert.deepEqual(
+        plain(segmentCompactPinyin("páng-ēncuòjié", 4)),
+        ["páng", "ēn", "cuò", "jié"],
+    );
+    assert.deepEqual(
+        plain(segmentCompactPinyin("páng ēncuòjié", 4)),
+        ["páng", "ēn", "cuò", "jié"],
+    );
+    assert.deepEqual(plain(segmentCompactPinyin("chángān", 2)), ["chán", "gān"]);
+    assert.deepEqual(plain(segmentCompactPinyin("cháng'ān", 2)), ["cháng", "ān"]);
+    assert.deepEqual(plain(toneSequenceForExpression("长安", "chángān")), [2, 1]);
+    assert.equal(segmentCompactPinyin("xīān", 2), null);
+    assert.deepEqual(plain(segmentCompactPinyin("xī'ān", 2)), ["xī", "ān"]);
+    assert.deepEqual(plain(toneSequenceForExpression("盘根错节", "pángēncuòjié")), [2, 1, 4, 2]);
 });
 
 test("parses spaced and compact numbered Pinyin", () => {
@@ -61,7 +86,6 @@ test("fails closed for ambiguous or unsafe input", () => {
     assert.equal(parsePinyinTones("zhong guo"), null);
     assert.equal(parsePinyinTones("cháng / zhǎng"), null);
     assert.equal(parsePinyinTones("mā2"), null);
-    assert.equal(toneSequenceForExpression("长安", "chángān"), null);
     assert.equal(toneSequenceForExpression("花儿", "huār"), null);
     assert.equal(toneSequenceForExpression("中国人", "zhōng guó"), null);
     assert.equal(toneSequenceForExpression("hello", "he2 llo5"), null);

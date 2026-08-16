@@ -427,6 +427,10 @@
 
                 const candidate = characters.slice(characterIndex, end).join("");
                 const parsed = parsePinyinSyllable(candidate);
+                // Within a joined Pinyin chunk, non-initial syllables beginning
+                // with a, o, or e require an explicit separator. Chunk starts
+                // already represent whitespace, apostrophes, or hyphens.
+                if (characterIndex > 0 && parsed && /^[aoe]/u.test(parsed.base)) continue;
                 // An -r suffix is valid only when the whole reading is already
                 // one syllable. Treating it as a compact boundary could turn
                 // huār into the incorrect two-syllable split hu + ār.
